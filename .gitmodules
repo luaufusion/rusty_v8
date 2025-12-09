@@ -55,3 +55,6 @@
 [submodule "third_party/rust"]
 	path = third_party/rust
 	url = https://chromium.googlesource.com/chromium/src/third_party/rust
+[submodule "rustyv8archive"]
+	path = rustyv8archive
+	url = https://github.com/luaufusion/rustyv8bins.git
