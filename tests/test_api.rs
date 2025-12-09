@@ -1217,6 +1217,11 @@ fn add_message_listener() {
     assert_eq!(4, frame.get_script_id());
     assert!(frame.get_script_name(scope).is_none());
     assert!(frame.get_script_name_or_source_url(scope).is_none());
+    assert_eq!(
+      frame.get_script_source(scope).unwrap(),
+      v8::String::new(scope, SOURCE).unwrap()
+    );
+    assert!(frame.get_script_source_mapping_url(scope).is_none());
     assert!(frame.get_function_name(scope).is_none());
     assert!(!frame.is_eval());
     assert!(!frame.is_constructor());
@@ -1226,12 +1231,14 @@ fn add_message_listener() {
   }
   isolate.add_message_listener(check_message_0);
 
+  const SOURCE: &str = "throw 'foo'";
+
   {
     v8::scope!(let scope, isolate);
 
     let context = v8::Context::new(scope, Default::default());
     let scope = &mut v8::ContextScope::new(scope, context);
-    let source = v8::String::new(scope, "throw 'foo'").unwrap();
+    let source = v8::String::new(scope, SOURCE).unwrap();
     let script = v8::Script::compile(scope, source, None).unwrap();
     assert!(script.run(scope).is_none());
     assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 1);
@@ -4842,6 +4849,7 @@ fn module_instantiation_failures1() {
     )
     .unwrap();
     assert_eq!("./foo.js", mr1.get_specifier().to_rust_string_lossy(scope));
+    assert_eq!(v8::ModuleImportPhase::kEvaluation, mr1.get_phase());
     let loc = module.source_offset_to_location(mr1.get_source_offset());
     assert_eq!(0, loc.get_line_number());
     assert_eq!(7, loc.get_column_number());
@@ -4852,6 +4860,7 @@ fn module_instantiation_failures1() {
     )
     .unwrap();
     assert_eq!("./bar.js", mr2.get_specifier().to_rust_string_lossy(scope));
+    assert_eq!(v8::ModuleImportPhase::kEvaluation, mr1.get_phase());
     let loc = module.source_offset_to_location(mr2.get_source_offset());
     assert_eq!(1, loc.get_line_number());
     assert_eq!(15, loc.get_column_number());
@@ -5675,14 +5684,15 @@ fn snapshot_creator_context_embedder_data() {
       let context = v8::Context::new(&scope, Default::default());
       let scope = &mut v8::ContextScope::new(&mut scope, context);
       let x = eval(scope, "({ prop: 1 })").unwrap();
-      context.set_embedder_data(1, x);
+      context.set_embedder_data(0, x);
       {
-        let value = context.get_embedder_data(scope, 1).unwrap();
+        let value = context.get_embedder_data(scope, 0).unwrap();
         let key = v8::String::new(scope, "prop").unwrap();
         let prop = value.cast::<v8::Object>().get(scope, key.into()).unwrap();
         let one_val = v8::Number::new(scope, 1.0).into();
         assert!(prop.same_value(one_val));
       }
+      context.clear_all_slots();
       scope.set_default_context(context);
     }
 
@@ -5704,7 +5714,7 @@ fn snapshot_creator_context_embedder_data() {
       let context = v8::Context::new(scope, Default::default());
       let scope = &mut v8::ContextScope::new(scope, context);
       {
-        let value = context.get_embedder_data(scope, 1).unwrap();
+        let value = context.get_embedder_data(scope, 0).unwrap();
         let key = v8::String::new(scope, "prop").unwrap();
         let prop = value.cast::<v8::Object>().get(scope, key.into()).unwrap();
         let one_val = v8::Number::new(scope, 1.0).into();
@@ -5716,6 +5726,7 @@ fn snapshot_creator_context_embedder_data() {
         let value = context.get_embedder_data(scope, 2).unwrap();
         assert!(value.same_value(x));
       }
+      context.clear_all_slots();
       scope.set_default_context(context);
     }
     snapshot_creator
@@ -5731,7 +5742,7 @@ fn snapshot_creator_context_embedder_data() {
       let context = v8::Context::new(scope, Default::default());
       let scope = &mut v8::ContextScope::new(scope, context);
       {
-        let value = context.get_embedder_data(scope, 1).unwrap();
+        let value = context.get_embedder_data(scope, 0).unwrap();
         let key = v8::String::new(scope, "prop").unwrap();
         let prop = value.cast::<v8::Object>().get(scope, key.into()).unwrap();
         let one_val = v8::Number::new(scope, 1.0).into();

@@ -2516,6 +2516,15 @@ const v8::String* v8__StackFrame__GetScriptNameOrSourceURL(
   return local_to_ptr(self.GetScriptNameOrSourceURL());
 }
 
+const v8::String* v8__StackFrame__GetScriptSource(const v8::StackFrame& self) {
+  return local_to_ptr(self.GetScriptSource());
+}
+
+const v8::String* v8__StackFrame__GetScriptSourceMappingURL(
+    const v8::StackFrame& self) {
+  return local_to_ptr(self.GetScriptSourceMappingURL());
+}
+
 const v8::String* v8__StackFrame__GetFunctionName(const v8::StackFrame& self) {
   return local_to_ptr(self.GetFunctionName());
 }
@@ -3384,6 +3393,11 @@ size_t v8__Module__GetStalledTopLevelAwaitMessage(
 const v8::String* v8__ModuleRequest__GetSpecifier(
     const v8::ModuleRequest& self) {
   return local_to_ptr(self.GetSpecifier());
+}
+
+v8::ModuleImportPhase v8__ModuleRequest__GetPhase(
+    const v8::ModuleRequest& self) {
+  return self.GetPhase();
 }
 
 int v8__ModuleRequest__GetSourceOffset(const v8::ModuleRequest& self) {
