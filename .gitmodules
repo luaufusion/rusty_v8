@@ -58,3 +58,6 @@
 [submodule "tools/win"]
 	path = tools/win
 	url = https://chromium.googlesource.com/chromium/src/tools/win
+[submodule "rustyv8archive"]
+	path = rustyv8archive
+	url = https://github.com/luaufusion/rustyv8bins.git

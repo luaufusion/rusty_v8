@@ -18,6 +18,8 @@ use std::process::Command;
 use std::process::Stdio;
 use which::which;
 
+const ARCHIVE_PATH: &'static str = "rustyv8archive";
+
 fn main() {
   println!("cargo:rerun-if-changed=.gn");
   println!("cargo:rerun-if-changed=BUILD.gn");
@@ -550,15 +552,11 @@ fn static_lib_url() -> String {
   if let Ok(custom_archive) = env::var("RUSTY_V8_ARCHIVE") {
     return custom_archive;
   }
-  let default_base = "https://github.com/denoland/rusty_v8/releases/download";
-  let base =
-    env::var("RUSTY_V8_MIRROR").unwrap_or_else(|_| default_base.into());
-  let version = env::var("CARGO_PKG_VERSION").unwrap();
   let target = env::var("TARGET").unwrap();
   let profile = prebuilt_profile();
   let features = prebuilt_features_suffix();
   format!(
-    "{base}/v{version}/{}.gz",
+    "./{ARCHIVE_PATH}/{}.gz",
     static_lib_name(&format!("{features}_{profile}_{target}")),
   )
 }
@@ -821,7 +819,8 @@ fn print_prebuilt_src_binding_path() {
   let features = prebuilt_features_suffix();
   let name = format!("src_binding{features}_{profile}_{target}.rs");
 
-  let src_binding_path = get_dirs().root.join("gen").join(name.clone());
+  let src_binding_path = env::current_dir().unwrap().join(ARCHIVE_PATH).join(name.clone());
+
 
   if let Ok(base) = env::var("RUSTY_V8_MIRROR") {
     let version = env::var("CARGO_PKG_VERSION").unwrap();

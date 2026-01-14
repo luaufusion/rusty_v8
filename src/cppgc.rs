@@ -304,7 +304,12 @@ impl Heap {
 /// method correctly visits all [`Member`], [`WeakMember`], and
 /// [`TraceReference`] pointers held by this object. Failing to do so will leave
 /// dangling pointers in the heap as objects are garbage collected.
-pub unsafe trait GarbageCollected {
+///
+/// Objects implementing this trait must also implement `Send + Sync` because
+/// the garbage collector may perform concurrent mark/sweep phases (depending on
+/// the cppgc heap settings). In particular, the object's `drop()` method may be
+/// invoked from a different thread than the one that created the object.
+pub unsafe trait GarbageCollected: Send + Sync {
   /// `trace` must call [`Visitor::trace`] for each
   /// [`Member`], [`WeakMember`], or [`TracedReference`] reachable
   /// from `self`.
