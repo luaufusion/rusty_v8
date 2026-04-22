@@ -18,6 +18,7 @@ use crate::StartupData;
 use crate::String;
 use crate::V8::get_current_platform;
 use crate::Value;
+use crate::binding::v8__HeapCodeStatistics;
 use crate::binding::v8__HeapSpaceStatistics;
 use crate::binding::v8__HeapStatistics;
 use crate::binding::v8__Isolate__UseCounterFeature;
@@ -256,7 +257,10 @@ pub(crate) type RawHostImportModuleDynamicallyCallback =
     Local<'s, FixedArray>,
   ) -> *mut Promise;
 
-#[cfg(all(target_family = "windows", target_arch = "x86_64"))]
+#[cfg(all(
+  target_family = "windows",
+  any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 pub type RawHostImportModuleDynamicallyCallback =
   for<'s> unsafe extern "C" fn(
     *mut *mut Promise,
@@ -322,7 +326,10 @@ where
       .map_or_else(null_mut, |return_value| return_value.as_non_null().as_ptr())
     }
 
-    #[cfg(all(target_family = "windows", target_arch = "x86_64"))]
+    #[cfg(all(
+      target_family = "windows",
+      any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     #[inline(always)]
     unsafe extern "C" fn abi_adapter<
       's,
@@ -415,7 +422,10 @@ pub(crate) type RawHostImportModuleWithPhaseDynamicallyCallback =
     Local<'s, FixedArray>,
   ) -> *mut Promise;
 
-#[cfg(all(target_family = "windows", target_arch = "x86_64"))]
+#[cfg(all(
+  target_family = "windows",
+  any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 pub type RawHostImportModuleWithPhaseDynamicallyCallback =
   for<'s> unsafe extern "C" fn(
     *mut *mut Promise,
@@ -487,7 +497,10 @@ where
       .map_or_else(null_mut, |return_value| return_value.as_non_null().as_ptr())
     }
 
-    #[cfg(all(target_family = "windows", target_arch = "x86_64"))]
+    #[cfg(all(
+      target_family = "windows",
+      any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     #[inline(always)]
     unsafe extern "C" fn abi_adapter<
       's,
@@ -653,6 +666,10 @@ unsafe extern "C" {
     isolate: *mut RealIsolate,
     space_statistics: *mut v8__HeapSpaceStatistics,
     index: size_t,
+  ) -> bool;
+  fn v8__Isolate__GetHeapCodeAndMetadataStatistics(
+    isolate: *mut RealIsolate,
+    code_statistics: *mut v8__HeapCodeStatistics,
   ) -> bool;
   fn v8__Isolate__AddNearHeapLimitCallback(
     isolate: *mut RealIsolate,
@@ -1257,6 +1274,26 @@ impl Isolate {
     Some(HeapSpaceStatistics(inner))
   }
 
+  /// Get code and metadata statistics for the heap.
+  ///
+  /// \returns true on success.
+  #[inline(always)]
+  pub fn get_heap_code_and_metadata_statistics(
+    &mut self,
+  ) -> Option<HeapCodeStatistics> {
+    let inner = unsafe {
+      let mut s = MaybeUninit::zeroed();
+      if !v8__Isolate__GetHeapCodeAndMetadataStatistics(
+        self.as_real_ptr(),
+        s.as_mut_ptr(),
+      ) {
+        return None;
+      }
+      s.assume_init()
+    };
+    Some(HeapCodeStatistics(inner))
+  }
+
   /// Tells V8 to capture current stack trace when uncaught exception occurs
   /// and report it to the message listeners. The option is off by default.
   #[inline(always)]
@@ -1664,7 +1701,7 @@ impl Isolate {
       + for<'a, 'b, 'c> Fn(
         &'c mut PinScope<'a, 'b>,
         Local<'a, Value>,
-        WasmStreaming,
+        WasmStreaming<false>,
       ),
   {
     unsafe {
@@ -2190,6 +2227,14 @@ impl HeapStatistics {
     self.0.number_of_detached_contexts_
   }
 
+  /// Returns the total number of bytes allocated since the Isolate was created.
+  /// This includes all heap objects allocated in any space (new, old, code,
+  /// etc.).
+  #[inline(always)]
+  pub fn total_allocated_bytes(&self) -> u64 {
+    self.0.total_allocated_bytes_
+  }
+
   /// Returns a 0/1 boolean, which signifies whether the V8 overwrite heap
   /// garbage with a bit pattern.
   #[inline(always)]
@@ -2219,6 +2264,26 @@ impl HeapSpaceStatistics {
 
   pub fn physical_space_size(&self) -> usize {
     self.0.physical_space_size_
+  }
+}
+
+pub struct HeapCodeStatistics(v8__HeapCodeStatistics);
+
+impl HeapCodeStatistics {
+  pub fn code_and_metadata_size(&self) -> usize {
+    self.0.code_and_metadata_size_
+  }
+
+  pub fn bytecode_and_metadata_size(&self) -> usize {
+    self.0.bytecode_and_metadata_size_
+  }
+
+  pub fn external_script_source_size(&self) -> usize {
+    self.0.external_script_source_size_
+  }
+
+  pub fn cpu_profiler_metadata_size(&self) -> usize {
+    self.0.cpu_profiler_metadata_size_
   }
 }
 

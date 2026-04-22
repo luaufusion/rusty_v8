@@ -224,12 +224,14 @@ fn build_binding() {
     .generate_cstr(true)
     .rustified_enum(".*UseCounterFeature")
     .rustified_enum(".*ModuleImportPhase")
+    .rustified_enum(".*Intercepted")
     .bitfield_enum(".*GCType")
     .bitfield_enum(".*GCCallbackFlags")
     .allowlist_item("v8__.*")
     .allowlist_item("cppgc__.*")
     .allowlist_item("RustObj")
     .allowlist_item("memory_span_t")
+    .allowlist_item("const_memory_span_t")
     .allowlist_item("ExternalConstOneByteStringResource")
     .generate()
     .expect("Unable to generate bindings");
@@ -311,6 +313,11 @@ fn build_v8(is_asan: bool) {
     env::var("CARGO_FEATURE_V8_ENABLE_V8_CHECKS").is_ok()
   ));
 
+  gn_args.push(format!(
+    "rusty_v8_enable_simdutf={}",
+    env::var("CARGO_FEATURE_SIMDUTF").is_ok()
+  ));
+
   // Fix GN's host_cpu detection when using x86_64 bins on Apple Silicon
   if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
     gn_args.push("host_cpu=\"arm64\"".to_string());
@@ -354,9 +361,11 @@ fn build_v8(is_asan: bool) {
   // cross-compilation setup
   if target_arch == "aarch64" {
     gn_args.push(r#"target_cpu="arm64""#.to_string());
-    gn_args.push("use_sysroot=true".to_string());
-    maybe_install_sysroot("arm64");
-    maybe_install_sysroot("amd64");
+    if target_os == "linux" {
+      gn_args.push("use_sysroot=true".to_string());
+      maybe_install_sysroot("arm64");
+      maybe_install_sysroot("amd64");
+    }
   }
   if target_arch == "arm" {
     gn_args.push(r#"target_cpu="arm""#.to_string());
@@ -536,6 +545,9 @@ fn prebuilt_features_suffix() -> String {
   if env::var("CARGO_FEATURE_V8_ENABLE_SANDBOX").is_ok() {
     features.push_str("_sandbox");
   }
+  if env::var("CARGO_FEATURE_SIMDUTF").is_ok() {
+    features.push_str("_simdutf");
+  }
   features
 }
 
@@ -632,32 +644,60 @@ fn download_file(url: &str, filename: &Path) {
     fs::remove_file(&tmpfile).unwrap();
   }
 
-  // Try downloading with python first. Python is a V8 build dependency,
-  // so this saves us from adding a Rust HTTP client dependency.
-  println!("Downloading (using Python) {url}");
-  let status = Command::new(python())
-    .arg("./tools/download_file.py")
-    .arg("--url")
-    .arg(url)
-    .arg("--filename")
-    .arg(&tmpfile)
-    .status();
+  // Try downloading with deno first, then python, then curl.
+  println!("Downloading {url}");
+  let status = which("deno").ok().and_then(|deno| {
+    println!("Trying with Deno...");
+    Command::new(deno)
+      .arg("eval")
+      .arg(
+        "const [url, path] = Deno.args; \
+         const resp = await fetch(url); \
+         if (!resp.ok) Deno.exit(1); \
+         const file = await Deno.open(path, { write: true, create: true }); \
+         await resp.body.pipeTo(file.writable);",
+      )
+      .arg("--allow-net")
+      .arg("--allow-write")
+      .arg("--")
+      .arg(url)
+      .arg(&tmpfile)
+      .status()
+      .ok()
+      .filter(|s| s.success())
+  });
 
-  // Python is only a required dependency for `V8_FROM_SOURCE` builds.
-  // If python is not available, try falling back to curl.
+  // Try downloading with python. Python is a V8 build dependency,
+  // so this saves us from adding a Rust HTTP client dependency.
   let status = match status {
-    Ok(status) if status.success() => status,
+    Some(status) => status,
     _ => {
-      println!("Python downloader failed, trying with curl.");
-      Command::new("curl")
-        .arg("-L")
-        .arg("-f")
-        .arg("-s")
-        .arg("-o")
-        .arg(&tmpfile)
+      println!("Trying with Python...");
+      let python_status = Command::new(python())
+        .arg("./tools/download_file.py")
+        .arg("--url")
         .arg(url)
-        .status()
-        .unwrap()
+        .arg("--filename")
+        .arg(&tmpfile)
+        .status();
+
+      // Python is only a required dependency for `V8_FROM_SOURCE` builds.
+      // If python is not available, try falling back to curl.
+      match python_status {
+        Ok(status) if status.success() => status,
+        _ => {
+          println!("Python downloader failed, trying with curl.");
+          Command::new("curl")
+            .arg("-L")
+            .arg("-f")
+            .arg("-s")
+            .arg("-o")
+            .arg(&tmpfile)
+            .arg(url)
+            .status()
+            .unwrap()
+        }
+      }
     }
   };
 
